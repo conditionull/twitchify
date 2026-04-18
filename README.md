@@ -1,6 +1,6 @@
 # twitchify
 
-Twitch bot that handles Spotify song queuing and chat TTS for your stream! <br />DISCLAIMER: code was generated with oil sipping clanker (Claude)
+Twitch bot that handles Spotify song queuing and chat TTS for your stream! <br />`DISCLAIMER:` code was generated with oil sipping clanker (Claude)
 
 ---
 
