@@ -57,10 +57,9 @@ client.on('message', async (channel, tags, message, self) => {
   const args = message.slice(1).split(' ');
   const command = args.shift().toLowerCase();
 
-  // ── !queue / !q
   if (command === 'queue' || command === 'q') {
     if (!queueEnabled) {
-      client.say(channel, `@${username} the queue is currently closed.`);
+      client.say(channel, `@${username} the queue is currently closed HAH`);
       return;
     }
     if (blacklist.has(username)) {
@@ -72,9 +71,14 @@ client.on('message', async (channel, tags, message, self) => {
       const remaining = COOLDOWN_MS - (Date.now() - lastUsed);
       if (remaining > 0) {
         const seconds = Math.ceil(remaining / 1000);
-        client.say(channel, `@${username} wait ${seconds}s before queuing again`);
+        client.say(channel, `@${username} wait ${seconds}s before queuing again Clocking`);
         return;
       }
+    }
+
+    if (!args[0]?.trim()) {
+      client.say(channel, `@${username} please provide a Spotify track link! posivibes`);
+      return;
     }
 
     const result = await addToQueue(args[0]);
