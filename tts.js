@@ -7,6 +7,7 @@ const AUDIO_SINK  = 'TTSSink';
 const VOICES_DIR  = path.join(__dirname, 'voices');
 const VOICES_FILE = path.join(__dirname, 'tts-voices.json');
 const DENIED_FILE = path.join(__dirname, 'tts-denied.json');
+const QUEUE_GAP_MS    = 1500; // silence gap between messages in ms
 
 // ── Available voices ──────────────────────────────────────────────────────────
 // Key   = what users type in chat (!ttsvoice amy)
@@ -26,7 +27,7 @@ const VOICE_MAP = {
   l2arctic:   'en_US-l2arctic-medium',
 };
 
-const DEFAULT_VOICE = 'libritts_r';
+const DEFAULT_VOICE = 'amy';
 
 // ── Slur filter ───────────────────────────────────────────────────────────────
 // Messages matching any of these patterns are silently skipped entirely.
@@ -43,6 +44,7 @@ const BLOCKED_TERMS = [
   /\bc[o0]{2}n\b/i,
   /\br[e3]t[a@]rd\b/i,
   /\btr[a@]nn[yi]\b/i,
+  /\br[e3]t[a@]rd(ed)?\b/i,
 ];
 
 function containsBlockedTerm(text) {
@@ -92,6 +94,65 @@ let ttsEnabled = false;
 const userVoices = loadVoices();
 const ttsDenied  = loadDenied();
 
+// ── TTS message queue ─────────────────────────────────────────────────────────
+// Messages are played one at a time in order, with a short gap between them.
+const ttsQueue  = [];
+let ttsPlaying  = false;
+ 
+function processQueue() {
+  if (ttsPlaying || ttsQueue.length === 0) return;
+ 
+  ttsPlaying = true;
+  const { text, voiceKey } = ttsQueue.shift();
+ 
+  const clean = sanitize(text);
+  if (!clean) {
+    ttsPlaying = false;
+    processQueue();
+    return;
+  }
+ 
+  const modelName = VOICE_MAP[voiceKey] || VOICE_MAP[DEFAULT_VOICE];
+  const modelPath = path.join(VOICES_DIR, `${modelName}.onnx`);
+ 
+  if (!fs.existsSync(modelPath)) {
+    console.error(`[TTS] Voice model not found: ${modelPath}`);
+    ttsPlaying = false;
+    processQueue();
+    return;
+  }
+ 
+  const sampleRate = modelName.endsWith('-low') ? 16000 : 22050;
+ 
+  const piper  = spawn('piper', ['--model', modelPath, '--output-raw']);
+  const paplay = spawn('paplay', [
+    '--raw',
+    `--rate=${sampleRate}`,
+    '--format=s16le',
+    '--channels=1',
+    `--device=${AUDIO_SINK}`,
+  ]);
+ 
+  piper.stdout.pipe(paplay.stdin);
+  piper.stdin.write(clean);
+  piper.stdin.end();
+ 
+  piper.stderr.on('data',  d => console.error('[TTS] piper:',  d.toString().trim()));
+  paplay.stderr.on('data', d => console.error('[TTS] paplay:', d.toString().trim()));
+ 
+  paplay.on('close', () => {
+    setTimeout(() => {
+      ttsPlaying = false;
+      processQueue();
+    }, QUEUE_GAP_MS);
+  });
+}
+ 
+function enqueue(text, voiceKey) {
+  ttsQueue.push({ text, voiceKey });
+  processQueue();
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function sanitize(text) {
   return text
@@ -100,37 +161,6 @@ function sanitize(text) {
     .replace(/(.)\1{4,}/g, '$1$1$1')
     .trim()
     .slice(0, 300);
-}
-
-function speak(text, voiceKey) {
-  const clean = sanitize(text);
-  if (!clean) return;
-
-  const modelName = VOICE_MAP[voiceKey] || VOICE_MAP[DEFAULT_VOICE];
-  const modelPath = path.join(VOICES_DIR, `${modelName}.onnx`);
-
-  if (!fs.existsSync(modelPath)) {
-    console.error(`[TTS] Voice model not found: ${modelPath}`);
-    return;
-  }
-
-  const sampleRate = modelName.endsWith('-low') ? 16000 : 22050;
-  
-  const piper = spawn('piper', ['--model', modelPath, '--output-raw']);
-  const paplay = spawn('paplay', [
-    '--raw',
-    `--rate=${sampleRate}`,
-    '--format=s16le',
-    '--channels=1',
-    `--device=${AUDIO_SINK}`
-  ]);
-
-  piper.stdout.pipe(paplay.stdin);
-  piper.stdin.write(clean);
-  piper.stdin.end();
-
-  piper.stderr.on('data', d => console.error('[TTS] piper:', d.toString().trim()));
-  paplay.stderr.on('data', d => console.error('[TTS] paplay:', d.toString().trim()));
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -215,9 +245,10 @@ function handleTTS(client, channel, tags, message, isMod) {
   if (message.startsWith('!')) return;
   if (ttsDenied.has(username)) return;
   if (containsBlockedTerm(message)) return;
+  if (tags['custom-reward-id']) return; // ignore channel point redemption messages
 
   const voiceKey = userVoices.get(username) || DEFAULT_VOICE;
-  speak(message, voiceKey);
+  enqueue(message, voiceKey);
 }
 
 function isTTSEnabled() {
