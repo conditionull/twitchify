@@ -206,7 +206,6 @@ function sanitize(text) {
  *   !ttsvoice list       anyone            — list available voices in chat
  */
 function handleTTS(client, channel, tags, message, isMod) {
-  console.log(`[TTS] Raw message from ${tags.username}: ${JSON.stringify(message)}`);
   const username = tags.username.toLowerCase();
   const lower = message.toLowerCase().trim();
 
