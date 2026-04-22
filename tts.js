@@ -153,12 +153,41 @@ function enqueue(text, voiceKey) {
   processQueue();
 }
 
+const REPLACEMENTS = {
+  'rip':   'rest in peace',
+  'lmao':  'laugh my ass off',
+  'lmfao': 'laugh my fucking ass off',
+  'omg':   'oh my god',
+  'btw':   'by the way',
+  'imo':   'in my opinion',
+  'ngl':   'not gonna lie',
+  'irl':   'in real life',
+  'afk':   'away from keyboard',
+  'brb':   'be right back',
+  'smh':   'shaking my head',
+  'idk':   "I don't know",
+  'tbh':   'to be honest',
+  'gg':    'good game',
+  'gl':    'good luck',
+  'wp':    'well played',
+  'ty':    'thank you',
+  'pov':   'point of view',
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function applyReplacements(text) {
+  const pattern = new RegExp(`\\b(${Object.keys(REPLACEMENTS).join('|')})\\b`, 'gi');
+  return text.replace(pattern, match => REPLACEMENTS[match.toLowerCase()] ?? match);
+}
+
 function sanitize(text) {
-  return text
-    .replace(/[$\\;"'|&<>(){}[\]!#]/g, '')
-    .replace(/https?:\/\/\S+/g, 'link')
-    .replace(/(.)\1{4,}/g, '$1$1$1')
+  return applyReplacements(text)
+    .replace(/\p{C}/gu, '')                // strip invisible unicode that Twitch appends
+    .replace(/\u034F/g, '')                // U+034F combining grapheme joiner that Twitch appends
+    .replace(/[$\\;"'|&<>(){}[\]!#]/g, '') // strip shell-unsafe and TTS-disruptive punctuation
+    .replace(/https?:\/\/\S+/g, 'link')    // replace URLs with the word "link"
+    .replace(/(.)\1{4,}/g, '$1$1$1')       // collapse repeated chars e.g. "looool" → "lol"
+    .replace(/\s{2,}/g, ' ')               // collapse multiple spaces into one
     .trim()
     .slice(0, 300);
 }
@@ -177,6 +206,7 @@ function sanitize(text) {
  *   !ttsvoice list       anyone            — list available voices in chat
  */
 function handleTTS(client, channel, tags, message, isMod) {
+  console.log(`[TTS] Raw message from ${tags.username}: ${JSON.stringify(message)}`);
   const username = tags.username.toLowerCase();
   const lower = message.toLowerCase().trim();
 

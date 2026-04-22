@@ -54,7 +54,7 @@ client.on('message', async (channel, tags, message, self) => {
 
   if (!message.startsWith('!')) return;
 
-  const args = message.slice(1).split(' ');
+  const args = message.slice(1).split(' ').filter(Boolean);
   const command = args.shift().toLowerCase();
 
   if (command === 'queue' || command === 'q') {
@@ -81,7 +81,8 @@ client.on('message', async (channel, tags, message, self) => {
       return;
     }
 
-    const result = await addToQueue(args[0]);
+    const spotifyArg = args.find(a => a.includes('spotify.com/track/')) ?? args[0];
+    const result = await addToQueue(spotifyArg);
     setTimeout(() => {
       if (result === 'ok') {
         cooldowns.set(username, Date.now());
